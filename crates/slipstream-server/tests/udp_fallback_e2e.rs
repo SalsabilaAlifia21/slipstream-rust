@@ -84,6 +84,7 @@ fn build_dns_query(qname: &str) -> Vec<u8> {
         cd: false,
         qdcount: 1,
         is_query: true,
+        payload: None,
     })
     .expect("encode DNS query")
 }

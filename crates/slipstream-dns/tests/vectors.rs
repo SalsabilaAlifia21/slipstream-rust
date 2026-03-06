@@ -78,6 +78,7 @@ fn vectors_match_codec() {
             cd: false,
             qdcount,
             is_query,
+            payload: None,
         })
         .expect("encode query");
         assert_eq!(

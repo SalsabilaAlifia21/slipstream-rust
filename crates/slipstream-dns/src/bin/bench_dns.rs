@@ -1,6 +1,6 @@
 use slipstream_core::cli::init_logging;
 use slipstream_dns::{
-    build_qname, decode_query, decode_response, encode_query, encode_response,
+    build_nonce_qname, decode_query, decode_response, encode_query, encode_response,
     max_payload_len_for_domain, QueryParams, Question, ResponseParams, CLASS_IN, RR_NULL,
 };
 use std::env;
@@ -46,7 +46,8 @@ fn main() {
     }
 
     let payload: Vec<u8> = (0..payload_len).map(|i| (i % 256) as u8).collect();
-    let qname = match build_qname(&payload, &domain) {
+    let dns_id: u16 = 0x1234;
+    let qname = match build_nonce_qname(dns_id, &domain) {
         Ok(name) => name,
         Err(err) => {
             error!("Failed to build qname: {}", err);
@@ -54,7 +55,7 @@ fn main() {
         }
     };
     let query_params = QueryParams {
-        id: 0x1234,
+        id: dns_id,
         qname: &qname,
         qtype: RR_NULL,
         qclass: CLASS_IN,
@@ -62,6 +63,7 @@ fn main() {
         cd: false,
         qdcount: 1,
         is_query: true,
+        payload: Some(&payload),
     };
     let query = encode_query(&query_params).expect("encode query");
 
@@ -71,7 +73,7 @@ fn main() {
         qclass: CLASS_IN,
     };
     let response_params = ResponseParams {
-        id: 0x1234,
+        id: dns_id,
         rd: true,
         cd: false,
         question: &question,
@@ -80,9 +82,6 @@ fn main() {
     };
     let response = encode_response(&response_params).expect("encode response");
 
-    bench("build_qname", iterations, payload_len, || {
-        let _ = build_qname(&payload, &domain).expect("build qname");
-    });
     bench("encode_query", iterations, query.len(), || {
         let _ = encode_query(&query_params).expect("encode query");
     });
