@@ -6,15 +6,21 @@ This document captures the DNS codec behavior and how it is validated.
 
 - Base32: RFC4648 alphabet, uppercase, no padding on encode; decode is case-insensitive.
 - Inline dots: insert '.' every 57 characters from the right, never add a trailing dot.
-- QNAME format: <base32(payload) with inline dots>.<domain>.
+- QNAME format: <base32(nonce)>.<domain>.  Nonce is derived from the DNS ID for
+  cache-busting; it does not carry payload data.
 - Servers may be configured with multiple domains; the QNAME suffix must match one.
 - DNS query: QTYPE=NULL, QCLASS=IN, RD=1, EDNS0 OPT always included.
+- Upstream payload is carried in a NULL additional record (up to 1000 bytes).
+- Legacy queries may encode the payload in the QNAME subdomain with base32 + inline
+  dots (ARCOUNT=1, no NULL record).  The server accepts both formats.
 - Server decode rules:
   - QR=1 or QDCOUNT!=1 -> FORMAT_ERROR.
   - QTYPE!=NULL -> NAME_ERROR.
   - Empty subdomain or suffix mismatch -> NAME_ERROR.
   - If multiple suffixes match, use the longest matching domain.
-  - Base32 decode failure -> SERVER_FAILURE.
+  - NULL additional record present -> use its RDATA as payload.
+  - Otherwise base32 decode the QNAME subdomain (legacy path).
+  - Base32 decode failure (legacy) -> SERVER_FAILURE.
   - Parse errors -> drop the message (no response).
 - Client decode rules: accept only QR=1, RCODE=OK, ANCOUNT=1, NULL answer;
   RDATA is raw binary payload (no length prefix, no chunking). Maximum 1000 bytes.

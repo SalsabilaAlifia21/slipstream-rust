@@ -1,5 +1,6 @@
 use crate::error::ClientError;
 use slipstream_core::net::{bind_first_resolved, bind_tcp_listener_addr, bind_udp_socket_addr};
+use slipstream_dns::MAX_UPSTREAM_PAYLOAD_LEN;
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6};
 use tokio::net::{TcpListener as TokioTcpListener, UdpSocket as TokioUdpSocket};
 
@@ -10,9 +11,9 @@ pub(crate) fn compute_mtu(domain_len: usize) -> Result<u32, ClientError> {
         ));
     }
     // Upstream payload is now carried in a NULL additional record and
-    // is capped at 1000 bytes (MAX_UPSTREAM_PAYLOAD_LEN), matching the
-    // downstream response limit.
-    Ok(1000)
+    // is capped at MAX_UPSTREAM_PAYLOAD_LEN, matching the downstream
+    // response limit.
+    Ok(MAX_UPSTREAM_PAYLOAD_LEN as u32)
 }
 
 pub(crate) async fn bind_udp_socket() -> Result<TokioUdpSocket, ClientError> {

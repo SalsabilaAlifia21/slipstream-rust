@@ -151,17 +151,14 @@ pub fn decode_query_with_domains(
 }
 
 pub fn encode_query(params: &QueryParams<'_>) -> Result<Vec<u8>, DnsError> {
-    let has_payload = params.payload.map(|p| !p.is_empty()).unwrap_or(false);
-    let payload_data = if has_payload {
-        params.payload.unwrap()
-    } else {
-        &[]
-    };
-    if payload_data.len() > MAX_UPSTREAM_PAYLOAD_LEN {
-        return Err(DnsError::new("query payload too long"));
+    let payload_data = params.payload.filter(|p| !p.is_empty());
+    if let Some(data) = payload_data {
+        if data.len() > MAX_UPSTREAM_PAYLOAD_LEN {
+            return Err(DnsError::new("query payload too long"));
+        }
     }
 
-    let arcount: u16 = if has_payload { 2 } else { 1 };
+    let arcount: u16 = if payload_data.is_some() { 2 } else { 1 };
 
     let mut out = Vec::with_capacity(256);
     let mut flags = 0u16;
@@ -188,8 +185,8 @@ pub fn encode_query(params: &QueryParams<'_>) -> Result<Vec<u8>, DnsError> {
         write_u16(&mut out, params.qclass);
     }
 
-    if has_payload {
-        encode_null_record(&mut out, payload_data)?;
+    if let Some(data) = payload_data {
+        encode_null_record(&mut out, data)?;
     }
 
     encode_opt_record(&mut out)?;
@@ -334,6 +331,8 @@ fn encode_null_record(out: &mut Vec<u8>, payload: &[u8]) -> Result<(), DnsError>
 fn scan_additional_null(packet: &[u8], mut offset: usize, arcount: u16) -> Option<Vec<u8>> {
     for _ in 0..arcount {
         let (rr_type, rdata, next) = parse_rr(packet, offset)?;
+        // Ignore empty NULL records so we fall back to QNAME-based decoding
+        // when a zero-length record is present (e.g. malformed query).
         if rr_type == RR_NULL && !rdata.is_empty() {
             return Some(rdata.to_vec());
         }

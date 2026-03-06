@@ -19,18 +19,35 @@ codec is intentionally minimal and focused on speed and compatibility.
 
 ## DNS query format (client -> server)
 
-- QNAME: <base32(payload) with inline dots>.<domain>.
+- QNAME: <base32(nonce)>.<domain>.  
+  The nonce is derived from the DNS ID for cache-busting; it does not carry
+  payload data.
 - QTYPE: NULL (RR_NULL)
 - QCLASS: IN (CLASS_IN)
 - QDCOUNT: 1
-- ARCOUNT: 1 with EDNS0 OPT record:
-  - name: "."
-  - type: RR_OPT (41)
-  - class: 65535
-  - ttl: 0
-  - udp_payload: 1232
+- ARCOUNT: 2 – a NULL record carrying the upstream payload, followed by an
+  EDNS0 OPT record.
+  - NULL additional record:
+    - name: "." (root)
+    - type: RR_NULL (10)
+    - class: IN (1)
+    - ttl: 0
+    - rdata: raw upstream payload bytes (max 1000 bytes)
+  - EDNS0 OPT record:
+    - name: "."
+    - type: RR_OPT (41)
+    - class: 65535
+    - ttl: 0
+    - udp_payload: 1232
 - RD is set. Other flags default.
 - ID is a 16-bit value (random in C; any 16-bit value is valid for interop).
+
+### Legacy query format
+
+Older clients may encode the entire upstream payload in the QNAME subdomain
+using base32 with inline dots, with ARCOUNT=1 (OPT only, no NULL record).
+The server accepts both formats: when a NULL additional record is present its
+RDATA is used as the payload; otherwise the QNAME subdomain is base32 decoded.
 
 ## DNS response format (server -> client)
 
@@ -63,7 +80,11 @@ codec is intentionally minimal and focused on speed and compatibility.
 - If QDCOUNT != 1: respond with FORMAT_ERROR.
 - If QTYPE != NULL: respond with NAME_ERROR (ignore query).
 - If the QNAME subdomain is empty: respond with NAME_ERROR.
-- If base32 decode fails: respond with SERVER_FAILURE.
+- If the additional section contains a NULL record, its RDATA is the upstream
+  payload (preferred path).
+- Otherwise, the QNAME subdomain is base32 decoded as the upstream payload
+  (legacy path).
+- If base32 decode fails (legacy path): respond with SERVER_FAILURE.
 - If the DNS parser fails (decode error): drop the message (no response).
 - The server must verify that QNAME ends with a configured domain suffix; if not, respond with NAME_ERROR.
 - If multiple suffixes match, the server selects the longest matching suffix.
@@ -114,15 +135,19 @@ Otherwise, the response is ignored (including NAME_ERROR, which signals no data)
 
 ## Limits and constraints
 
-- MAX_DNS_QUERY_SIZE is 512 bytes (traditional DNS UDP limit).
+- DNS_MAX_QUERY_SIZE is 1232 bytes (EDNS0 advertised UDP payload).
 - Inline dots ensure label length <= 57 chars.
 - EDNS0 is always included on outbound messages and advertises udp_payload=1232;
   incoming messages are accepted regardless of OPT presence.
-- Client MTU is derived from the domain length: floor((240 - domain_len) / 1.6).
+- Maximum upstream payload (client -> server) is 1000 bytes, carried in a NULL
+  additional record.
+- Maximum downstream payload (server -> client) is 1000 bytes, carried in a
+  NULL answer record.
+- Client MTU is fixed at 1000.
 - Server MTU is fixed at 1000.
 
 ## References
 
-- DNS codec: crates/slipstream-dns/src/dns.rs
+- DNS codec: crates/slipstream-dns/src/codec.rs
 - Vectors: fixtures/vectors/dns-vectors.json
 - Vector tests: crates/slipstream-dns/tests/vectors.rs
