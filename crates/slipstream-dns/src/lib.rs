@@ -13,7 +13,7 @@ pub use codec::{
 pub use dots::{dotify, undotify};
 pub use types::{
     DecodeQueryError, DecodedQuery, DnsError, QueryParams, Question, Rcode, ResponseParams,
-    CLASS_IN, EDNS_UDP_PAYLOAD, RR_A, RR_OPT, RR_TXT,
+    CLASS_IN, EDNS_UDP_PAYLOAD, RR_A, RR_NULL, RR_OPT, RR_TXT,
 };
 
 pub fn build_qname(payload: &[u8], domain: &str) -> Result<String, DnsError> {

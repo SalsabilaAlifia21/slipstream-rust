@@ -9,6 +9,10 @@
 #include "lua-resty-base-encoding-base32.h"
 #include "slipstream_inline_dots.h"
 
+#ifndef RR_NULL
+#define RR_NULL 10
+#endif
+
 #define QNAME_MAX 512
 
 static int hex_value(char c) {
@@ -278,7 +282,7 @@ static int emit_vector(FILE *out, const char *name, uint16_t id, const char *dom
     bool emit_response_no_data = !raw_mode;
     bool emit_response_error = has_error_rcode && !raw_mode;
     const char *expected_action = raw_mode ? "drop" : "reply";
-    uint16_t qtype = RR_TXT;
+    uint16_t qtype = RR_NULL;
     size_t qdcount = 1;
     bool is_query = true;
 

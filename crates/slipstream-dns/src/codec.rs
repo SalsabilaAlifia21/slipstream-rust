@@ -4,12 +4,14 @@ use crate::dots;
 use crate::name::{encode_name, extract_subdomain_multi, parse_name};
 use crate::types::{
     DecodeQueryError, DecodedQuery, DnsError, QueryParams, Rcode, ResponseParams, EDNS_UDP_PAYLOAD,
-    RR_OPT, RR_TXT,
+    RR_NULL, RR_OPT,
 };
 use crate::wire::{
     parse_header, parse_question, parse_question_for_reply, read_u16, read_u32, write_u16,
     write_u32,
 };
+
+const MAX_RESPONSE_PAYLOAD_LEN: usize = 1000;
 
 pub fn decode_query(packet: &[u8], domain: &str) -> Result<DecodedQuery, DecodeQueryError> {
     decode_query_with_domains(packet, &[domain])
@@ -54,7 +56,7 @@ pub fn decode_query_with_domains(
         Err(_) => return Err(DecodeQueryError::Drop),
     };
 
-    if question.qtype != RR_TXT {
+    if question.qtype != RR_NULL {
         return Err(DecodeQueryError::Reply {
             id: header.id,
             rd,
@@ -183,22 +185,12 @@ pub fn encode_response(params: &ResponseParams<'_>) -> Result<Vec<u8>, DnsError>
         write_u16(&mut out, params.question.qtype);
         write_u16(&mut out, params.question.qclass);
         write_u32(&mut out, 60);
-        let chunk_count = payload_len.div_ceil(255);
-        let rdata_len = payload_len + chunk_count;
-        if rdata_len > u16::MAX as usize {
+        if payload_len > MAX_RESPONSE_PAYLOAD_LEN {
             return Err(DnsError::new("payload too long"));
         }
-        write_u16(&mut out, rdata_len as u16);
+        write_u16(&mut out, payload_len as u16);
         if let Some(payload) = params.payload {
-            let mut remaining = payload_len;
-            let mut cursor = 0;
-            while remaining > 0 {
-                let chunk_len = remaining.min(255);
-                out.push(chunk_len as u8);
-                out.extend_from_slice(&payload[cursor..cursor + chunk_len]);
-                cursor += chunk_len;
-                remaining -= chunk_len;
-            }
+            out.extend_from_slice(payload);
         }
     }
 
@@ -236,6 +228,9 @@ pub fn decode_response(packet: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
     let qtype = read_u16(packet, offset)?;
+    if qtype != RR_NULL {
+        return None;
+    }
     offset += 2;
     let _qclass = read_u16(packet, offset)?;
     offset += 2;
@@ -243,27 +238,10 @@ pub fn decode_response(packet: &[u8]) -> Option<Vec<u8>> {
     offset += 4;
     let rdlen = read_u16(packet, offset)? as usize;
     offset += 2;
-    if offset + rdlen > packet.len() || rdlen < 1 {
+    if rdlen == 0 || offset + rdlen > packet.len() {
         return None;
     }
-    if qtype != RR_TXT {
-        return None;
-    }
-
-    let mut remaining = rdlen;
-    let mut cursor = offset;
-    let mut out = Vec::with_capacity(rdlen);
-    while remaining > 0 {
-        let txt_len = packet[cursor] as usize;
-        cursor += 1;
-        remaining -= 1;
-        if txt_len > remaining {
-            return None;
-        }
-        out.extend_from_slice(&packet[cursor..cursor + txt_len]);
-        cursor += txt_len;
-        remaining -= txt_len;
-    }
+    let out = packet[offset..offset + rdlen].to_vec();
     if out.is_empty() {
         return None;
     }
@@ -287,17 +265,17 @@ fn encode_opt_record(out: &mut Vec<u8>) -> Result<(), DnsError> {
 
 #[cfg(test)]
 mod tests {
-    use super::encode_response;
-    use crate::types::{Question, ResponseParams, CLASS_IN, RR_TXT};
+    use super::{encode_response, MAX_RESPONSE_PAYLOAD_LEN};
+    use crate::types::{Question, ResponseParams, CLASS_IN, RR_NULL};
 
     #[test]
     fn encode_response_rejects_large_payload() {
         let question = Question {
             name: "a.test.com.".to_string(),
-            qtype: RR_TXT,
+            qtype: RR_NULL,
             qclass: CLASS_IN,
         };
-        let payload = vec![0u8; u16::MAX as usize];
+        let payload = vec![0u8; MAX_RESPONSE_PAYLOAD_LEN + 1];
         let params = ResponseParams {
             id: 0x1234,
             rd: false,
@@ -307,5 +285,24 @@ mod tests {
             rcode: None,
         };
         assert!(encode_response(&params).is_err());
+    }
+
+    #[test]
+    fn encode_response_accepts_max_payload() {
+        let question = Question {
+            name: "a.test.com.".to_string(),
+            qtype: RR_NULL,
+            qclass: CLASS_IN,
+        };
+        let payload = vec![0u8; MAX_RESPONSE_PAYLOAD_LEN];
+        let params = ResponseParams {
+            id: 0x1234,
+            rd: false,
+            cd: false,
+            question: &question,
+            payload: Some(&payload),
+            rcode: None,
+        };
+        assert!(encode_response(&params).is_ok());
     }
 }

@@ -1,6 +1,6 @@
 # Protocol
 
-Slipstream encapsulates QUIC packets inside DNS TXT queries and responses. The DNS
+Slipstream encapsulates QUIC packets inside DNS NULL queries and responses. The DNS
 codec is intentionally minimal and focused on speed and compatibility.
 
 ## Domain suffix
@@ -20,7 +20,7 @@ codec is intentionally minimal and focused on speed and compatibility.
 ## DNS query format (client -> server)
 
 - QNAME: <base32(payload) with inline dots>.<domain>.
-- QTYPE: TXT (RR_TXT)
+- QTYPE: NULL (RR_NULL)
 - QCLASS: IN (CLASS_IN)
 - QDCOUNT: 1
 - ARCOUNT: 1 with EDNS0 OPT record:
@@ -46,12 +46,13 @@ codec is intentionally minimal and focused on speed and compatibility.
 - If payload length > 0:
   - RCODE = OK
   - ANCOUNT = 1
-  - Answer is TXT:
+  - Answer is NULL:
     - name = query QNAME
-    - type = TXT
+    - type = NULL
     - class = query class
     - ttl = 60
-    - text = raw payload bytes (no base32)
+    - rdata = raw payload bytes (no base32, no length prefix)
+    - maximum payload length = 1000 bytes
 - If payload length == 0 and no error:
   - RCODE = NAME_ERROR (NXDOMAIN)
   - ANCOUNT = 0
@@ -60,7 +61,7 @@ codec is intentionally minimal and focused on speed and compatibility.
 
 - If the DNS message is not a query (QR=1): respond with FORMAT_ERROR.
 - If QDCOUNT != 1: respond with FORMAT_ERROR.
-- If QTYPE != TXT: respond with NAME_ERROR (ignore query).
+- If QTYPE != NULL: respond with NAME_ERROR (ignore query).
 - If the QNAME subdomain is empty: respond with NAME_ERROR.
 - If base32 decode fails: respond with SERVER_FAILURE.
 - If the DNS parser fails (decode error): drop the message (no response).
@@ -71,7 +72,7 @@ codec is intentionally minimal and focused on speed and compatibility.
 
 The client treats the response as data only when:
 
-- QR = 1, RCODE = OK, ANCOUNT = 1, and the answer type is TXT.
+- QR = 1, RCODE = OK, ANCOUNT = 1, and the answer type is NULL.
 
 Otherwise, the response is ignored (including NAME_ERROR, which signals no data).
 
@@ -118,7 +119,7 @@ Otherwise, the response is ignored (including NAME_ERROR, which signals no data)
 - EDNS0 is always included on outbound messages and advertises udp_payload=1232;
   incoming messages are accepted regardless of OPT presence.
 - Client MTU is derived from the domain length: floor((240 - domain_len) / 1.6).
-- Server MTU is fixed at 900.
+- Server MTU is fixed at 1000.
 
 ## References
 

@@ -8,17 +8,17 @@ This document captures the DNS codec behavior and how it is validated.
 - Inline dots: insert '.' every 57 characters from the right, never add a trailing dot.
 - QNAME format: <base32(payload) with inline dots>.<domain>.
 - Servers may be configured with multiple domains; the QNAME suffix must match one.
-- DNS query: QTYPE=TXT, QCLASS=IN, RD=1, EDNS0 OPT always included.
+- DNS query: QTYPE=NULL, QCLASS=IN, RD=1, EDNS0 OPT always included.
 - Server decode rules:
   - QR=1 or QDCOUNT!=1 -> FORMAT_ERROR.
-  - QTYPE!=TXT -> NAME_ERROR.
+  - QTYPE!=NULL -> NAME_ERROR.
   - Empty subdomain or suffix mismatch -> NAME_ERROR.
   - If multiple suffixes match, use the longest matching domain.
   - Base32 decode failure -> SERVER_FAILURE.
   - Parse errors -> drop the message (no response).
-- Client decode rules: accept only QR=1, RCODE=OK, ANCOUNT=1, TXT answer;
-  reassemble multi-part TXT payloads in order.
-- QUIC stateless reset packets, when generated, are carried as normal TXT payloads
+- Client decode rules: accept only QR=1, RCODE=OK, ANCOUNT=1, NULL answer;
+  RDATA is raw binary payload (no length prefix, no chunking). Maximum 1000 bytes.
+- QUIC stateless reset packets, when generated, are carried as normal NULL payloads
   with RCODE=OK.
 
 For the full protocol overview, see docs/protocol.md.

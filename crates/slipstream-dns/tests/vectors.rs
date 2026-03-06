@@ -4,7 +4,7 @@ use std::path::Path;
 use serde::Deserialize;
 use slipstream_dns::{
     decode_query, decode_response, encode_query, encode_response, DecodeQueryError, QueryParams,
-    Question, Rcode, ResponseParams, CLASS_IN, RR_A, RR_TXT,
+    Question, Rcode, ResponseParams, CLASS_IN, RR_A, RR_NULL,
 };
 
 #[derive(Debug, Deserialize)]
@@ -186,9 +186,9 @@ fn vectors_match_codec() {
 fn query_mode(mode: &str) -> (u16, u16, bool) {
     match mode {
         "non_txt" => (RR_A, 1, true),
-        "qdcount_zero" => (RR_TXT, 0, true),
-        "not_query" => (RR_TXT, 1, false),
-        _ => (RR_TXT, 1, true),
+        "qdcount_zero" => (RR_NULL, 0, true),
+        "not_query" => (RR_NULL, 1, false),
+        _ => (RR_NULL, 1, true),
     }
 }
 
