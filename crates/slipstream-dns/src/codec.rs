@@ -331,6 +331,11 @@ fn encode_null_record(out: &mut Vec<u8>, payload: &[u8]) -> Result<(), DnsError>
 fn scan_additional_null(packet: &[u8], mut offset: usize, arcount: u16) -> Option<Vec<u8>> {
     for _ in 0..arcount {
         let (rr_type, rdata, next) = parse_rr(packet, offset)?;
+        // Safety: ensure the parser is making forward progress to
+        // prevent infinite loops on malformed packets.
+        if next <= offset {
+            return None;
+        }
         // Ignore empty NULL records so we fall back to QNAME-based decoding
         // when a zero-length record is present (e.g. malformed query).
         if rr_type == RR_NULL && !rdata.is_empty() {
