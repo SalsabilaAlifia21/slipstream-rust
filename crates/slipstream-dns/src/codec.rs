@@ -7,11 +7,9 @@ use crate::types::{
     RR_NULL, RR_OPT,
 };
 use crate::wire::{
-    parse_header, parse_question, parse_question_for_reply, read_u16, read_u32, write_u16,
-    write_u32,
+    parse_header, parse_question, parse_question_for_reply, parse_rr, read_u16, read_u32,
+    write_u16, write_u32,
 };
-
-const MAX_RESPONSE_PAYLOAD_LEN: usize = 1000;
 
 pub fn decode_query(packet: &[u8], domain: &str) -> Result<DecodedQuery, DecodeQueryError> {
     decode_query_with_domains(packet, &[domain])
@@ -51,8 +49,8 @@ pub fn decode_query_with_domains(
         });
     }
 
-    let question = match parse_question(packet, header.offset) {
-        Ok((question, _)) => question,
+    let (question, question_end) = match parse_question(packet, header.offset) {
+        Ok(result) => result,
         Err(_) => return Err(DecodeQueryError::Drop),
     };
 
@@ -66,6 +64,44 @@ pub fn decode_query_with_domains(
         });
     }
 
+    // Check additional section for a NULL record carrying upstream payload.
+    let additional_payload = scan_additional_null(packet, question_end, header.arcount);
+
+    if let Some(payload) = additional_payload {
+        // Upstream data is carried in the NULL additional record.
+        // The QNAME subdomain must still be present (for cache-busting) but
+        // its content is not decoded as payload data.
+        let subdomain_raw = match extract_subdomain_multi(&question.name, domains) {
+            Ok(sub) => sub,
+            Err(rcode) => {
+                return Err(DecodeQueryError::Reply {
+                    id: header.id,
+                    rd,
+                    cd,
+                    question: Some(question),
+                    rcode,
+                });
+            }
+        };
+        if subdomain_raw.is_empty() {
+            return Err(DecodeQueryError::Reply {
+                id: header.id,
+                rd,
+                cd,
+                question: Some(question),
+                rcode: Rcode::NameError,
+            });
+        }
+        return Ok(DecodedQuery {
+            id: header.id,
+            rd,
+            cd,
+            question,
+            payload,
+        });
+    }
+
+    // Legacy path: upstream data is encoded in the QNAME subdomain.
     let subdomain_raw = match extract_subdomain_multi(&question.name, domains) {
         Ok(subdomain_raw) => subdomain_raw,
         Err(rcode) => {
@@ -113,6 +149,15 @@ pub fn decode_query_with_domains(
 }
 
 pub fn encode_query(params: &QueryParams<'_>) -> Result<Vec<u8>, DnsError> {
+    let payload_data = params.payload.filter(|p| !p.is_empty());
+    if let Some(data) = payload_data {
+        if data.len() > params.max_payload_len {
+            return Err(DnsError::new("query payload too long"));
+        }
+    }
+
+    let arcount: u16 = if payload_data.is_some() { 2 } else { 1 };
+
     let mut out = Vec::with_capacity(256);
     let mut flags = 0u16;
     if !params.is_query {
@@ -130,12 +175,16 @@ pub fn encode_query(params: &QueryParams<'_>) -> Result<Vec<u8>, DnsError> {
     write_u16(&mut out, params.qdcount);
     write_u16(&mut out, 0);
     write_u16(&mut out, 0);
-    write_u16(&mut out, 1);
+    write_u16(&mut out, arcount);
 
     if params.qdcount > 0 {
         encode_name(params.qname, &mut out)?;
         write_u16(&mut out, params.qtype);
         write_u16(&mut out, params.qclass);
+    }
+
+    if let Some(data) = payload_data {
+        encode_null_record(&mut out, data)?;
     }
 
     encode_opt_record(&mut out)?;
@@ -185,7 +234,7 @@ pub fn encode_response(params: &ResponseParams<'_>) -> Result<Vec<u8>, DnsError>
         write_u16(&mut out, params.question.qtype);
         write_u16(&mut out, params.question.qclass);
         write_u32(&mut out, 60);
-        if payload_len > MAX_RESPONSE_PAYLOAD_LEN {
+        if payload_len > params.max_payload_len {
             return Err(DnsError::new("payload too long"));
         }
         write_u16(&mut out, payload_len as u16);
@@ -263,10 +312,44 @@ fn encode_opt_record(out: &mut Vec<u8>) -> Result<(), DnsError> {
     Ok(())
 }
 
+fn encode_null_record(out: &mut Vec<u8>, payload: &[u8]) -> Result<(), DnsError> {
+    use crate::types::CLASS_IN;
+    out.push(0); // root name
+    write_u16(out, RR_NULL);
+    write_u16(out, CLASS_IN);
+    write_u32(out, 0); // TTL
+    write_u16(out, payload.len() as u16);
+    out.extend_from_slice(payload);
+    Ok(())
+}
+
+/// Scan the additional section of a query for a NULL record and return its
+/// RDATA as the upstream payload.  Returns `None` when no NULL record is found
+/// (which means the caller should fall back to QNAME-based decoding).
+fn scan_additional_null(packet: &[u8], mut offset: usize, arcount: u16) -> Option<Vec<u8>> {
+    for _ in 0..arcount {
+        let (rr_type, rdata, next) = parse_rr(packet, offset)?;
+        // Safety: ensure the parser is making forward progress to
+        // prevent infinite loops on malformed packets.
+        if next <= offset {
+            return None;
+        }
+        // Ignore empty NULL records so we fall back to QNAME-based decoding
+        // when a zero-length record is present (e.g. malformed query).
+        if rr_type == RR_NULL && !rdata.is_empty() {
+            return Some(rdata.to_vec());
+        }
+        offset = next;
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{encode_response, MAX_RESPONSE_PAYLOAD_LEN};
-    use crate::types::{Question, ResponseParams, CLASS_IN, RR_NULL};
+    use super::{decode_query, encode_query, encode_response};
+    use crate::types::{
+        QueryParams, Question, ResponseParams, CLASS_IN, DEFAULT_PAYLOAD_LIMIT, RR_NULL,
+    };
 
     #[test]
     fn encode_response_rejects_large_payload() {
@@ -275,7 +358,7 @@ mod tests {
             qtype: RR_NULL,
             qclass: CLASS_IN,
         };
-        let payload = vec![0u8; MAX_RESPONSE_PAYLOAD_LEN + 1];
+        let payload = vec![0u8; DEFAULT_PAYLOAD_LIMIT + 1];
         let params = ResponseParams {
             id: 0x1234,
             rd: false,
@@ -283,6 +366,7 @@ mod tests {
             question: &question,
             payload: Some(&payload),
             rcode: None,
+            max_payload_len: DEFAULT_PAYLOAD_LIMIT,
         };
         assert!(encode_response(&params).is_err());
     }
@@ -294,7 +378,7 @@ mod tests {
             qtype: RR_NULL,
             qclass: CLASS_IN,
         };
-        let payload = vec![0u8; MAX_RESPONSE_PAYLOAD_LEN];
+        let payload = vec![0u8; DEFAULT_PAYLOAD_LIMIT];
         let params = ResponseParams {
             id: 0x1234,
             rd: false,
@@ -302,7 +386,189 @@ mod tests {
             question: &question,
             payload: Some(&payload),
             rcode: None,
+            max_payload_len: DEFAULT_PAYLOAD_LIMIT,
         };
         assert!(encode_response(&params).is_ok());
+    }
+
+    #[test]
+    fn encode_query_with_null_payload_roundtrips() {
+        let domain = "test.com";
+        let payload = vec![0xABu8; 500];
+        let qname = format!("AA.{}.", domain);
+        let params = QueryParams {
+            id: 0x1234,
+            qname: &qname,
+            qtype: RR_NULL,
+            qclass: CLASS_IN,
+            rd: true,
+            cd: false,
+            qdcount: 1,
+            is_query: true,
+            payload: Some(&payload),
+            max_payload_len: DEFAULT_PAYLOAD_LIMIT,
+        };
+        let packet = encode_query(&params).expect("encode");
+        let decoded = decode_query(&packet, domain).expect("decode");
+        assert_eq!(decoded.payload, payload);
+        assert_eq!(decoded.id, 0x1234);
+    }
+
+    #[test]
+    fn encode_query_with_max_null_payload() {
+        let domain = "test.com";
+        let payload = vec![0xFFu8; DEFAULT_PAYLOAD_LIMIT];
+        let qname = format!("BB.{}.", domain);
+        let params = QueryParams {
+            id: 0x5678,
+            qname: &qname,
+            qtype: RR_NULL,
+            qclass: CLASS_IN,
+            rd: true,
+            cd: false,
+            qdcount: 1,
+            is_query: true,
+            payload: Some(&payload),
+            max_payload_len: DEFAULT_PAYLOAD_LIMIT,
+        };
+        let packet = encode_query(&params).expect("encode");
+        let decoded = decode_query(&packet, domain).expect("decode");
+        assert_eq!(decoded.payload.len(), DEFAULT_PAYLOAD_LIMIT);
+        assert_eq!(decoded.payload, payload);
+    }
+
+    #[test]
+    fn encode_query_rejects_oversized_null_payload() {
+        let domain = "test.com";
+        let payload = vec![0u8; DEFAULT_PAYLOAD_LIMIT + 1];
+        let qname = format!("CC.{}.", domain);
+        let params = QueryParams {
+            id: 0x0001,
+            qname: &qname,
+            qtype: RR_NULL,
+            qclass: CLASS_IN,
+            rd: true,
+            cd: false,
+            qdcount: 1,
+            is_query: true,
+            payload: Some(&payload),
+            max_payload_len: DEFAULT_PAYLOAD_LIMIT,
+        };
+        assert!(encode_query(&params).is_err());
+    }
+
+    #[test]
+    fn encode_query_without_payload_is_backward_compatible() {
+        // When payload is None, ARCOUNT should be 1 (OPT only).
+        let qname = "AA.test.com.";
+        let params = QueryParams {
+            id: 0x0001,
+            qname,
+            qtype: RR_NULL,
+            qclass: CLASS_IN,
+            rd: true,
+            cd: false,
+            qdcount: 1,
+            is_query: true,
+            payload: None,
+            max_payload_len: DEFAULT_PAYLOAD_LIMIT,
+        };
+        let packet = encode_query(&params).expect("encode");
+        // ARCOUNT at offset 10-11 should be 1
+        assert_eq!(packet[10], 0x00);
+        assert_eq!(packet[11], 0x01);
+    }
+
+    #[test]
+    fn encode_query_with_payload_has_arcount_two() {
+        let payload = vec![0xAB; 10];
+        let qname = "AA.test.com.";
+        let params = QueryParams {
+            id: 0x0001,
+            qname,
+            qtype: RR_NULL,
+            qclass: CLASS_IN,
+            rd: true,
+            cd: false,
+            qdcount: 1,
+            is_query: true,
+            payload: Some(&payload),
+            max_payload_len: DEFAULT_PAYLOAD_LIMIT,
+        };
+        let packet = encode_query(&params).expect("encode");
+        // ARCOUNT at offset 10-11 should be 2
+        assert_eq!(packet[10], 0x00);
+        assert_eq!(packet[11], 0x02);
+    }
+
+    #[test]
+    fn encode_query_respects_custom_payload_limit() {
+        let domain = "test.com";
+        let payload = vec![0xABu8; 500];
+        let qname = format!("AA.{}.", domain);
+
+        // Should succeed with limit of 500
+        let params = QueryParams {
+            id: 0x1234,
+            qname: &qname,
+            qtype: RR_NULL,
+            qclass: CLASS_IN,
+            rd: true,
+            cd: false,
+            qdcount: 1,
+            is_query: true,
+            payload: Some(&payload),
+            max_payload_len: 500,
+        };
+        assert!(encode_query(&params).is_ok());
+
+        // Should fail with limit of 499
+        let params = QueryParams {
+            id: 0x1234,
+            qname: &qname,
+            qtype: RR_NULL,
+            qclass: CLASS_IN,
+            rd: true,
+            cd: false,
+            qdcount: 1,
+            is_query: true,
+            payload: Some(&payload),
+            max_payload_len: 499,
+        };
+        assert!(encode_query(&params).is_err());
+    }
+
+    #[test]
+    fn encode_response_respects_custom_payload_limit() {
+        let question = Question {
+            name: "a.test.com.".to_string(),
+            qtype: RR_NULL,
+            qclass: CLASS_IN,
+        };
+        let payload = vec![0u8; 500];
+
+        // Should succeed with limit of 500
+        let params = ResponseParams {
+            id: 0x1234,
+            rd: false,
+            cd: false,
+            question: &question,
+            payload: Some(&payload),
+            rcode: None,
+            max_payload_len: 500,
+        };
+        assert!(encode_response(&params).is_ok());
+
+        // Should fail with limit of 499
+        let params = ResponseParams {
+            id: 0x1234,
+            rd: false,
+            cd: false,
+            question: &question,
+            payload: Some(&payload),
+            rcode: None,
+            max_payload_len: 499,
+        };
+        assert!(encode_response(&params).is_err());
     }
 }

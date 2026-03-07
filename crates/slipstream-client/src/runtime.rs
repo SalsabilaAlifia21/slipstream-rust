@@ -19,7 +19,7 @@ use crate::streams::{
     ClientState, Command,
 };
 use slipstream_core::{net::is_transient_udp_error, normalize_dual_stack_addr};
-use slipstream_dns::{build_qname, encode_query, QueryParams, CLASS_IN, RR_NULL};
+use slipstream_dns::{build_nonce_qname, encode_query, QueryParams, CLASS_IN, RR_NULL};
 use slipstream_ffi::{
     configure_quic_with_custom,
     picoquic::{
@@ -70,7 +70,7 @@ fn drain_disconnected_commands(command_rx: &mut mpsc::UnboundedReceiver<Command>
 
 pub async fn run_client(config: &ClientConfig<'_>) -> Result<i32, ClientError> {
     let domain_len = config.domain.len();
-    let mtu = compute_mtu(domain_len)?;
+    let mtu = compute_mtu(domain_len, config.payload_limit)?;
     let udp = bind_udp_socket().await?;
 
     let (command_tx, mut command_rx) = mpsc::unbounded_channel();
@@ -412,7 +412,7 @@ pub async fn run_client(config: &ClientConfig<'_>) -> Result<i32, ClientError> {
                     }
                 }
 
-                let qname = build_qname(&send_buf[..send_length], config.domain)
+                let qname = build_nonce_qname(dns_id, config.domain)
                     .map_err(|err| ClientError::new(err.to_string()))?;
                 let params = QueryParams {
                     id: dns_id,
@@ -423,6 +423,8 @@ pub async fn run_client(config: &ClientConfig<'_>) -> Result<i32, ClientError> {
                     cd: false,
                     qdcount: 1,
                     is_query: true,
+                    payload: Some(&send_buf[..send_length]),
+                    max_payload_len: config.payload_limit,
                 };
                 dns_id = dns_id.wrapping_add(1);
                 let packet =

@@ -7,7 +7,7 @@ mod udp_fallback;
 use clap::{parser::ValueSource, CommandFactory, FromArgMatches, Parser};
 use server::{run_server, ServerConfig};
 use slipstream_core::{
-    cli::{exit_with_error, exit_with_message, init_logging, unwrap_or_exit},
+    cli::{exit_with_error, exit_with_message, init_logging, parse_payload_limit, unwrap_or_exit},
     normalize_domain, parse_host_port, parse_host_port_parts, sip003, AddressKind, HostPort,
 };
 use tokio::runtime::Builder;
@@ -47,6 +47,8 @@ struct Args {
     debug_streams: bool,
     #[arg(long = "debug-commands")]
     debug_commands: bool,
+    #[arg(long = "payload-limit", default_value_t = 1000, value_parser = parse_payload_limit)]
+    payload_limit: usize,
 }
 
 fn main() {
@@ -160,6 +162,7 @@ fn main() {
         idle_timeout_seconds: args.idle_timeout_seconds,
         debug_streams: args.debug_streams,
         debug_commands: args.debug_commands,
+        payload_limit: args.payload_limit,
     };
 
     let runtime = Builder::new_current_thread()

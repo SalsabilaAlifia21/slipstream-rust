@@ -26,3 +26,14 @@ pub fn exit_with_message(message: &str, code: i32) -> ! {
     tracing::error!("{}", message);
     std::process::exit(code);
 }
+
+pub fn parse_payload_limit(input: &str) -> Result<usize, String> {
+    let trimmed = input.trim();
+    let value = trimmed
+        .parse::<usize>()
+        .map_err(|_| format!("Invalid payload-limit value: {}", trimmed))?;
+    if value == 0 {
+        return Err("payload-limit must be at least 1".to_string());
+    }
+    Ok(value)
+}

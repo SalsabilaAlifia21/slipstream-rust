@@ -9,6 +9,7 @@ pub(crate) struct Header {
     pub(crate) cd: bool,
     pub(crate) qdcount: u16,
     pub(crate) ancount: u16,
+    pub(crate) arcount: u16,
     pub(crate) rcode: Option<Rcode>,
     pub(crate) offset: usize,
 }
@@ -22,7 +23,7 @@ pub(crate) fn parse_header(packet: &[u8]) -> Option<Header> {
     let qdcount = read_u16(packet, 4)?;
     let ancount = read_u16(packet, 6)?;
     let _nscount = read_u16(packet, 8)?;
-    let _arcount = read_u16(packet, 10)?;
+    let arcount = read_u16(packet, 10)?;
 
     let is_response = flags & 0x8000 != 0;
     let rd = flags & 0x0100 != 0;
@@ -36,6 +37,7 @@ pub(crate) fn parse_header(packet: &[u8]) -> Option<Header> {
         cd,
         qdcount,
         ancount,
+        arcount,
         rcode,
         offset: 12,
     })
@@ -115,4 +117,23 @@ pub(crate) fn write_u16(out: &mut Vec<u8>, value: u16) {
 
 pub(crate) fn write_u32(out: &mut Vec<u8>, value: u32) {
     out.extend_from_slice(&value.to_be_bytes());
+}
+
+/// Parse a resource record, returning (type, rdata_slice, offset_after).
+pub(crate) fn parse_rr(packet: &[u8], offset: usize) -> Option<(u16, &[u8], usize)> {
+    let (_name, mut offset) = parse_name(packet, offset).ok()?;
+    if offset + 10 > packet.len() {
+        return None;
+    }
+    let rr_type = read_u16(packet, offset)?;
+    offset += 2;
+    // skip class + ttl
+    offset += 6;
+    let rdlen = read_u16(packet, offset)? as usize;
+    offset += 2;
+    if offset + rdlen > packet.len() {
+        return None;
+    }
+    let rdata = &packet[offset..offset + rdlen];
+    Some((rr_type, rdata, offset + rdlen))
 }

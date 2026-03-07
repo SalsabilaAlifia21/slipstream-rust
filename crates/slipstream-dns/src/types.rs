@@ -6,6 +6,7 @@ pub const RR_TXT: u16 = 16;
 pub const RR_OPT: u16 = 41;
 pub const CLASS_IN: u16 = 1;
 pub const EDNS_UDP_PAYLOAD: u16 = 1232;
+pub const DEFAULT_PAYLOAD_LIMIT: usize = 1000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rcode {
@@ -74,6 +75,8 @@ pub struct QueryParams<'a> {
     pub cd: bool,
     pub qdcount: u16,
     pub is_query: bool,
+    pub payload: Option<&'a [u8]>,
+    pub max_payload_len: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -84,6 +87,7 @@ pub struct ResponseParams<'a> {
     pub question: &'a Question,
     pub payload: Option<&'a [u8]>,
     pub rcode: Option<Rcode>,
+    pub max_payload_len: usize,
 }
 
 #[derive(Debug, Clone)]

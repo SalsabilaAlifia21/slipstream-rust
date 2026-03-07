@@ -7,7 +7,7 @@ mod streams;
 
 use clap::{parser::ValueSource, ArgGroup, CommandFactory, FromArgMatches, Parser};
 use slipstream_core::{
-    cli::{exit_with_error, exit_with_message, init_logging, unwrap_or_exit},
+    cli::{exit_with_error, exit_with_message, init_logging, parse_payload_limit, unwrap_or_exit},
     normalize_domain, parse_host_port, parse_host_port_parts, sip003, AddressKind, HostPort,
 };
 use slipstream_ffi::{ClientConfig, ResolverMode, ResolverSpec};
@@ -58,6 +58,8 @@ struct Args {
     debug_poll: bool,
     #[arg(long = "debug-streams")]
     debug_streams: bool,
+    #[arg(long = "payload-limit", default_value_t = 1000, value_parser = parse_payload_limit)]
+    payload_limit: usize,
 }
 
 fn main() {
@@ -182,6 +184,7 @@ fn main() {
         keep_alive_interval: keep_alive_interval as usize,
         debug_poll: args.debug_poll,
         debug_streams: args.debug_streams,
+        payload_limit: args.payload_limit,
     };
 
     let runtime = Builder::new_current_thread()

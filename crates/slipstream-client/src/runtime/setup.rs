@@ -3,19 +3,16 @@ use slipstream_core::net::{bind_first_resolved, bind_tcp_listener_addr, bind_udp
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6};
 use tokio::net::{TcpListener as TokioTcpListener, UdpSocket as TokioUdpSocket};
 
-pub(crate) fn compute_mtu(domain_len: usize) -> Result<u32, ClientError> {
+pub(crate) fn compute_mtu(domain_len: usize, payload_limit: usize) -> Result<u32, ClientError> {
     if domain_len >= 240 {
         return Err(ClientError::new(
             "Domain name is too long for DNS transport",
         ));
     }
-    let mtu = ((240.0 - domain_len as f64) / 1.6) as u32;
-    if mtu == 0 {
-        return Err(ClientError::new(
-            "MTU computed to zero; check domain length",
-        ));
-    }
-    Ok(mtu)
+    // Upstream payload is now carried in a NULL additional record and
+    // is capped at the configured payload limit, matching the downstream
+    // response limit.
+    Ok(payload_limit as u32)
 }
 
 pub(crate) async fn bind_udp_socket() -> Result<TokioUdpSocket, ClientError> {

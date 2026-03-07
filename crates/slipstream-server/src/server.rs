@@ -33,7 +33,7 @@ use crate::streams::{
 
 // Protocol defaults; see docs/config.md for details.
 const SLIPSTREAM_ALPN: &str = "picoquic_sample";
-const DNS_MAX_QUERY_SIZE: usize = 512;
+const DNS_MAX_QUERY_SIZE: usize = 1232;
 const IDLE_SLEEP_MS: u64 = 10;
 const IDLE_GC_INTERVAL: Duration = Duration::from_secs(1);
 // Default QUIC MTU for server packets; see docs/config.md for details.
@@ -83,6 +83,7 @@ pub struct ServerConfig {
     pub idle_timeout_seconds: u64,
     pub debug_streams: bool,
     pub debug_commands: bool,
+    pub payload_limit: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -461,6 +462,7 @@ pub async fn run_server(config: &ServerConfig) -> Result<i32, ServerError> {
                 question: &slot.question,
                 payload,
                 rcode,
+                max_payload_len: config.payload_limit,
             })
             .map_err(|err| ServerError::new(err.to_string()))?;
             let peer = if map_ipv4_peers {

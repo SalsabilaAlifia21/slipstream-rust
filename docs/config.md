@@ -39,6 +39,8 @@ certificates are not verified.
 - Client SNI: `test.example.com`.
 - Server ALPN: `picoquic_sample`.
 - Server QUIC MTU: `900`.
+- Default payload limit: `1000` bytes (both upstream and downstream).
+  Override with `--payload-limit` on both client and server (must match).
   Update `crates/slipstream-client/src/client.rs` and `crates/slipstream-server/src/server.rs`
   together to keep client/server ALPN in sync.
 

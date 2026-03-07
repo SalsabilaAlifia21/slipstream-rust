@@ -1,6 +1,6 @@
 use crate::error::ClientError;
 use slipstream_core::net::is_transient_udp_error;
-use slipstream_dns::{build_qname, encode_query, QueryParams, CLASS_IN, RR_NULL};
+use slipstream_dns::{build_nonce_qname, encode_query, QueryParams, CLASS_IN, RR_NULL};
 use slipstream_ffi::picoquic::{
     picoquic_cnx_t, picoquic_current_time, picoquic_prepare_packet_ex, slipstream_request_poll,
 };
@@ -87,7 +87,7 @@ pub(crate) async fn send_poll_queries(
         resolver.debug.polls_sent = resolver.debug.polls_sent.saturating_add(1);
 
         let poll_id = *dns_id;
-        let qname = build_qname(&send_buf[..send_length], config.domain)
+        let qname = build_nonce_qname(poll_id, config.domain)
             .map_err(|err| ClientError::new(err.to_string()))?;
         let params = QueryParams {
             id: poll_id,
@@ -98,6 +98,8 @@ pub(crate) async fn send_poll_queries(
             cd: false,
             qdcount: 1,
             is_query: true,
+            payload: Some(&send_buf[..send_length]),
+            max_payload_len: config.payload_limit,
         };
         *dns_id = dns_id.wrapping_add(1);
         let packet = encode_query(&params).map_err(|err| ClientError::new(err.to_string()))?;
