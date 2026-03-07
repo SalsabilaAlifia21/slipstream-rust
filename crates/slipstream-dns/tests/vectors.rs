@@ -4,7 +4,7 @@ use std::path::Path;
 use serde::Deserialize;
 use slipstream_dns::{
     decode_query, decode_response, encode_query, encode_response, DecodeQueryError, QueryParams,
-    Question, Rcode, ResponseParams, CLASS_IN, RR_A, RR_NULL,
+    Question, Rcode, ResponseParams, CLASS_IN, DEFAULT_PAYLOAD_LIMIT, RR_A, RR_NULL,
 };
 
 #[derive(Debug, Deserialize)]
@@ -79,6 +79,7 @@ fn vectors_match_codec() {
             qdcount,
             is_query,
             payload: None,
+            max_payload_len: DEFAULT_PAYLOAD_LIMIT,
         })
         .expect("encode query");
         assert_eq!(
@@ -124,6 +125,7 @@ fn vectors_match_codec() {
                 question: &question,
                 payload: Some(&payload),
                 rcode: None,
+                max_payload_len: DEFAULT_PAYLOAD_LIMIT,
             })
             .expect("encode response_ok");
             let expected = decode_hex(&resp.packet_hex);
@@ -141,6 +143,7 @@ fn vectors_match_codec() {
                 question: &question,
                 payload: None,
                 rcode: None,
+                max_payload_len: DEFAULT_PAYLOAD_LIMIT,
             })
             .expect("encode response_no_data");
             let expected = decode_hex(&resp.packet_hex);
@@ -166,6 +169,7 @@ fn vectors_match_codec() {
                 question: &question,
                 payload: None,
                 rcode: Some(rcode),
+                max_payload_len: DEFAULT_PAYLOAD_LIMIT,
             })
             .expect("encode response_error");
             let expected = decode_hex(&resp.packet_hex);

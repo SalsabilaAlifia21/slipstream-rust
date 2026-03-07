@@ -47,6 +47,8 @@ struct Args {
     debug_streams: bool,
     #[arg(long = "debug-commands")]
     debug_commands: bool,
+    #[arg(long = "payload-limit", default_value_t = 1000, value_parser = parse_payload_limit)]
+    payload_limit: usize,
 }
 
 fn main() {
@@ -160,6 +162,7 @@ fn main() {
         idle_timeout_seconds: args.idle_timeout_seconds,
         debug_streams: args.debug_streams,
         debug_commands: args.debug_commands,
+        payload_limit: args.payload_limit,
     };
 
     let runtime = Builder::new_current_thread()
@@ -196,6 +199,17 @@ fn parse_max_connections(input: &str) -> Result<u32, String> {
         .map_err(|_| format!("Invalid max-connections value: {}", trimmed))?;
     if value == 0 {
         return Err("max-connections must be at least 1".to_string());
+    }
+    Ok(value)
+}
+
+fn parse_payload_limit(input: &str) -> Result<usize, String> {
+    let trimmed = input.trim();
+    let value = trimmed
+        .parse::<usize>()
+        .map_err(|_| format!("Invalid payload-limit value: {}", trimmed))?;
+    if value == 0 {
+        return Err("payload-limit must be at least 1".to_string());
     }
     Ok(value)
 }

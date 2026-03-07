@@ -99,6 +99,7 @@ pub(crate) async fn send_poll_queries(
             qdcount: 1,
             is_query: true,
             payload: Some(&send_buf[..send_length]),
+            max_payload_len: config.payload_limit,
         };
         *dns_id = dns_id.wrapping_add(1);
         let packet = encode_query(&params).map_err(|err| ClientError::new(err.to_string()))?;

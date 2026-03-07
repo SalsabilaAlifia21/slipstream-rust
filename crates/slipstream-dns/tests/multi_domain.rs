@@ -1,6 +1,6 @@
 use slipstream_dns::{
     build_qname, decode_query_with_domains, encode_query, DecodeQueryError, QueryParams, Rcode,
-    CLASS_IN, RR_NULL,
+    CLASS_IN, DEFAULT_PAYLOAD_LIMIT, RR_NULL,
 };
 
 #[test]
@@ -17,6 +17,7 @@ fn decode_query_with_domains_accepts_any_match() {
         qdcount: 1,
         is_query: true,
         payload: None,
+        max_payload_len: DEFAULT_PAYLOAD_LIMIT,
     })
     .expect("encode query");
 
@@ -39,6 +40,7 @@ fn decode_query_with_domains_prefers_longest_suffix() {
         qdcount: 1,
         is_query: true,
         payload: None,
+        max_payload_len: DEFAULT_PAYLOAD_LIMIT,
     })
     .expect("encode query");
 
@@ -61,6 +63,7 @@ fn decode_query_with_domains_rejects_unknown_domain() {
         qdcount: 1,
         is_query: true,
         payload: None,
+        max_payload_len: DEFAULT_PAYLOAD_LIMIT,
     })
     .expect("encode query");
 
@@ -83,6 +86,7 @@ fn decode_query_with_domains_rejects_empty_subdomain_on_overlap() {
         qdcount: 1,
         is_query: true,
         payload: None,
+        max_payload_len: DEFAULT_PAYLOAD_LIMIT,
     })
     .expect("encode query");
 

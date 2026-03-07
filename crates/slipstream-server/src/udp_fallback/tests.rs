@@ -1,5 +1,5 @@
 use super::*;
-use slipstream_dns::{encode_query, QueryParams, CLASS_IN, RR_A};
+use slipstream_dns::{encode_query, QueryParams, CLASS_IN, DEFAULT_PAYLOAD_LIMIT, RR_A};
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Duration};
 
@@ -14,6 +14,7 @@ fn build_dns_query(name: &str) -> Vec<u8> {
         qdcount: 1,
         is_query: true,
         payload: None,
+        max_payload_len: DEFAULT_PAYLOAD_LIMIT,
     })
     .expect("dns query")
 }

@@ -58,6 +58,8 @@ struct Args {
     debug_poll: bool,
     #[arg(long = "debug-streams")]
     debug_streams: bool,
+    #[arg(long = "payload-limit", default_value_t = 1000, value_parser = parse_payload_limit)]
+    payload_limit: usize,
 }
 
 fn main() {
@@ -182,6 +184,7 @@ fn main() {
         keep_alive_interval: keep_alive_interval as usize,
         debug_poll: args.debug_poll,
         debug_streams: args.debug_streams,
+        payload_limit: args.payload_limit,
     };
 
     let runtime = Builder::new_current_thread()
@@ -342,6 +345,17 @@ fn parse_keep_alive_interval(options: &[sip003::Sip003Option]) -> Result<Option<
         }
     }
     Ok(last)
+}
+
+fn parse_payload_limit(input: &str) -> Result<usize, String> {
+    let trimmed = input.trim();
+    let value = trimmed
+        .parse::<usize>()
+        .map_err(|_| format!("Invalid payload-limit value: {}", trimmed))?;
+    if value == 0 {
+        return Err("payload-limit must be at least 1".to_string());
+    }
+    Ok(value)
 }
 
 #[cfg(test)]

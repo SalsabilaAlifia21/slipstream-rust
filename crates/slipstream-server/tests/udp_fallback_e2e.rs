@@ -8,7 +8,9 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use slipstream_dns::{encode_query, is_response, QueryParams, CLASS_IN, RR_A};
+use slipstream_dns::{
+    encode_query, is_response, QueryParams, CLASS_IN, DEFAULT_PAYLOAD_LIMIT, RR_A,
+};
 
 use support::{
     pick_udp_port, server_bin_path, spawn_server, test_cert_and_key, workspace_root, ServerArgs,
@@ -85,6 +87,7 @@ fn build_dns_query(qname: &str) -> Vec<u8> {
         qdcount: 1,
         is_query: true,
         payload: None,
+        max_payload_len: DEFAULT_PAYLOAD_LIMIT,
     })
     .expect("encode DNS query")
 }

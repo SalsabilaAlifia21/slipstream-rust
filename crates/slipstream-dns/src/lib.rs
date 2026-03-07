@@ -13,7 +13,7 @@ pub use codec::{
 pub use dots::{dotify, undotify};
 pub use types::{
     DecodeQueryError, DecodedQuery, DnsError, QueryParams, Question, Rcode, ResponseParams,
-    CLASS_IN, EDNS_UDP_PAYLOAD, MAX_UPSTREAM_PAYLOAD_LEN, RR_A, RR_NULL, RR_OPT, RR_TXT,
+    CLASS_IN, DEFAULT_PAYLOAD_LIMIT, EDNS_UDP_PAYLOAD, RR_A, RR_NULL, RR_OPT, RR_TXT,
 };
 
 pub fn build_qname(payload: &[u8], domain: &str) -> Result<String, DnsError> {
@@ -45,8 +45,8 @@ pub fn build_nonce_qname(dns_id: u16, domain: &str) -> Result<String, DnsError> 
 
 /// Maximum upstream payload length.  With the NULL additional record path the
 /// payload is no longer limited by QNAME encoding; it is capped at
-/// [`MAX_UPSTREAM_PAYLOAD_LEN`] (1000 bytes).
-pub fn max_payload_len_for_domain(domain: &str) -> Result<usize, DnsError> {
+/// `payload_limit` (defaults to [`DEFAULT_PAYLOAD_LIMIT`]).
+pub fn max_payload_len_for_domain(domain: &str, payload_limit: usize) -> Result<usize, DnsError> {
     let domain = domain.trim_end_matches('.');
     if domain.is_empty() {
         return Err(DnsError::new("domain must not be empty"));
@@ -54,7 +54,7 @@ pub fn max_payload_len_for_domain(domain: &str) -> Result<usize, DnsError> {
     if domain.len() > name::MAX_DNS_NAME_LEN {
         return Err(DnsError::new("domain too long"));
     }
-    Ok(types::MAX_UPSTREAM_PAYLOAD_LEN)
+    Ok(payload_limit)
 }
 
 /// Maximum payload that can be encoded in a QNAME subdomain (legacy path).
@@ -96,6 +96,7 @@ fn base32_len(payload_len: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use super::types::DEFAULT_PAYLOAD_LIMIT;
     use super::{build_qname, max_payload_len_for_domain, qname_payload_len_for_domain};
 
     #[test]
@@ -114,8 +115,12 @@ mod tests {
     }
 
     #[test]
-    fn max_payload_len_returns_upstream_limit() {
-        let max = max_payload_len_for_domain("example.com").expect("max payload");
-        assert_eq!(max, 1000);
+    fn max_payload_len_returns_configured_limit() {
+        let max =
+            max_payload_len_for_domain("example.com", DEFAULT_PAYLOAD_LIMIT).expect("max payload");
+        assert_eq!(max, DEFAULT_PAYLOAD_LIMIT);
+
+        let max = max_payload_len_for_domain("example.com", 2000).expect("max payload");
+        assert_eq!(max, 2000);
     }
 }

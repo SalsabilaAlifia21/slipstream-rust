@@ -83,6 +83,7 @@ pub struct ServerConfig {
     pub idle_timeout_seconds: u64,
     pub debug_streams: bool,
     pub debug_commands: bool,
+    pub payload_limit: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -461,6 +462,7 @@ pub async fn run_server(config: &ServerConfig) -> Result<i32, ServerError> {
                 question: &slot.question,
                 payload,
                 rcode,
+                max_payload_len: config.payload_limit,
             })
             .map_err(|err| ServerError::new(err.to_string()))?;
             let peer = if map_ipv4_peers {

@@ -1,7 +1,8 @@
 use slipstream_core::cli::init_logging;
 use slipstream_dns::{
     build_nonce_qname, decode_query, decode_response, encode_query, encode_response,
-    max_payload_len_for_domain, QueryParams, Question, ResponseParams, CLASS_IN, RR_NULL,
+    max_payload_len_for_domain, QueryParams, Question, ResponseParams, CLASS_IN,
+    DEFAULT_PAYLOAD_LIMIT, RR_NULL,
 };
 use std::env;
 use std::time::Instant;
@@ -12,6 +13,7 @@ fn main() {
     let mut iterations = 10_000usize;
     let mut payload_len = 256usize;
     let mut domain = "test.com".to_string();
+    let mut payload_limit = DEFAULT_PAYLOAD_LIMIT;
 
     for arg in env::args().skip(1) {
         if let Some(value) = arg.strip_prefix("--iterations=") {
@@ -20,13 +22,15 @@ fn main() {
             payload_len = value.parse().unwrap_or(payload_len);
         } else if let Some(value) = arg.strip_prefix("--domain=") {
             domain = value.to_string();
+        } else if let Some(value) = arg.strip_prefix("--payload-limit=") {
+            payload_limit = value.parse().unwrap_or(payload_limit);
         } else if arg == "--help" {
             print_usage();
             return;
         }
     }
 
-    let max_payload = match max_payload_len_for_domain(&domain) {
+    let max_payload = match max_payload_len_for_domain(&domain, payload_limit) {
         Ok(limit) => limit,
         Err(err) => {
             error!("Invalid domain: {}", err);
@@ -64,6 +68,7 @@ fn main() {
         qdcount: 1,
         is_query: true,
         payload: Some(&payload),
+        max_payload_len: payload_limit,
     };
     let query = encode_query(&query_params).expect("encode query");
 
@@ -79,6 +84,7 @@ fn main() {
         question: &question,
         payload: Some(&payload),
         rcode: None,
+        max_payload_len: payload_limit,
     };
     let response = encode_response(&response_params).expect("encode response");
 
@@ -120,5 +126,7 @@ fn bench(label: &str, iterations: usize, bytes_per_iter: usize, mut f: impl FnMu
 }
 
 fn print_usage() {
-    println!("Usage: bench_dns [--iterations=N] [--payload-len=N] [--domain=NAME]");
+    println!(
+        "Usage: bench_dns [--iterations=N] [--payload-len=N] [--domain=NAME] [--payload-limit=N]"
+    );
 }
