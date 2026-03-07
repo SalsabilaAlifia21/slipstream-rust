@@ -32,7 +32,7 @@ codec is intentionally minimal and focused on speed and compatibility.
     - type: RR_NULL (10)
     - class: IN (1)
     - ttl: 0
-    - rdata: raw upstream payload bytes (max 1000 bytes)
+    - rdata: raw upstream payload bytes (default limit: 1000 bytes, configurable via `--payload-limit`)
   - EDNS0 OPT record:
     - name: "."
     - type: RR_OPT (41)
@@ -69,7 +69,7 @@ RDATA is used as the payload; otherwise the QNAME subdomain is base32 decoded.
     - class = query class
     - ttl = 60
     - rdata = raw payload bytes (no base32, no length prefix)
-    - maximum payload length = 1000 bytes
+    - maximum payload length = configurable via `--payload-limit` (default 1000 bytes)
 - If payload length == 0 and no error:
   - RCODE = NAME_ERROR (NXDOMAIN)
   - ANCOUNT = 0
@@ -139,12 +139,13 @@ Otherwise, the response is ignored (including NAME_ERROR, which signals no data)
 - Inline dots ensure label length <= 57 chars.
 - EDNS0 is always included on outbound messages and advertises udp_payload=1232;
   incoming messages are accepted regardless of OPT presence.
-- Maximum upstream payload (client -> server) is 1000 bytes, carried in a NULL
-  additional record.
-- Maximum downstream payload (server -> client) is 1000 bytes, carried in a
-  NULL answer record.
-- Client MTU is fixed at 1000.
-- Server MTU is fixed at 1000.
+- Maximum upstream payload (client -> server) is configurable via `--payload-limit`
+  (default 1000 bytes), carried in a NULL additional record.
+- Maximum downstream payload (server -> client) is configurable via `--payload-limit`
+  (default 1000 bytes), carried in a NULL answer record.
+- Client MTU equals the configured `--payload-limit` (default 1000).
+- Server response payload limit equals the configured `--payload-limit` (default 1000).
+  Server QUIC MTU is fixed at 900.
 
 ## References
 

@@ -7,7 +7,7 @@ mod streams;
 
 use clap::{parser::ValueSource, ArgGroup, CommandFactory, FromArgMatches, Parser};
 use slipstream_core::{
-    cli::{exit_with_error, exit_with_message, init_logging, unwrap_or_exit},
+    cli::{exit_with_error, exit_with_message, init_logging, parse_payload_limit, unwrap_or_exit},
     normalize_domain, parse_host_port, parse_host_port_parts, sip003, AddressKind, HostPort,
 };
 use slipstream_ffi::{ClientConfig, ResolverMode, ResolverSpec};
@@ -345,17 +345,6 @@ fn parse_keep_alive_interval(options: &[sip003::Sip003Option]) -> Result<Option<
         }
     }
     Ok(last)
-}
-
-fn parse_payload_limit(input: &str) -> Result<usize, String> {
-    let trimmed = input.trim();
-    let value = trimmed
-        .parse::<usize>()
-        .map_err(|_| format!("Invalid payload-limit value: {}", trimmed))?;
-    if value == 0 {
-        return Err("payload-limit must be at least 1".to_string());
-    }
-    Ok(value)
 }
 
 #[cfg(test)]

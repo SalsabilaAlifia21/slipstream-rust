@@ -7,7 +7,7 @@ mod udp_fallback;
 use clap::{parser::ValueSource, CommandFactory, FromArgMatches, Parser};
 use server::{run_server, ServerConfig};
 use slipstream_core::{
-    cli::{exit_with_error, exit_with_message, init_logging, unwrap_or_exit},
+    cli::{exit_with_error, exit_with_message, init_logging, parse_payload_limit, unwrap_or_exit},
     normalize_domain, parse_host_port, parse_host_port_parts, sip003, AddressKind, HostPort,
 };
 use tokio::runtime::Builder;
@@ -199,17 +199,6 @@ fn parse_max_connections(input: &str) -> Result<u32, String> {
         .map_err(|_| format!("Invalid max-connections value: {}", trimmed))?;
     if value == 0 {
         return Err("max-connections must be at least 1".to_string());
-    }
-    Ok(value)
-}
-
-fn parse_payload_limit(input: &str) -> Result<usize, String> {
-    let trimmed = input.trim();
-    let value = trimmed
-        .parse::<usize>()
-        .map_err(|_| format!("Invalid payload-limit value: {}", trimmed))?;
-    if value == 0 {
-        return Err("payload-limit must be at least 1".to_string());
     }
     Ok(value)
 }

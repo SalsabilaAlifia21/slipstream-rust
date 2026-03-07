@@ -10,7 +10,8 @@ This document captures the DNS codec behavior and how it is validated.
   cache-busting; it does not carry payload data.
 - Servers may be configured with multiple domains; the QNAME suffix must match one.
 - DNS query: QTYPE=NULL, QCLASS=IN, RD=1, EDNS0 OPT always included.
-- Upstream payload is carried in a NULL additional record (up to 1000 bytes).
+- Upstream payload is carried in a NULL additional record (configurable limit,
+  default 1000 bytes, set via `--payload-limit`).
 - Legacy queries may encode the payload in the QNAME subdomain with base32 + inline
   dots (ARCOUNT=1, no NULL record).  The server accepts both formats.
 - Server decode rules:
@@ -23,7 +24,8 @@ This document captures the DNS codec behavior and how it is validated.
   - Base32 decode failure (legacy) -> SERVER_FAILURE.
   - Parse errors -> drop the message (no response).
 - Client decode rules: accept only QR=1, RCODE=OK, ANCOUNT=1, NULL answer;
-  RDATA is raw binary payload (no length prefix, no chunking). Maximum 1000 bytes.
+  RDATA is raw binary payload (no length prefix, no chunking). Default limit 1000 bytes,
+  configurable via `--payload-limit`.
 - QUIC stateless reset packets, when generated, are carried as normal NULL payloads
   with RCODE=OK.
 
@@ -60,3 +62,5 @@ The Rust CLI enforces the following constraints:
 - Resolver parsing supports IPv4, bracketed IPv6, and optional :port.
 - Resolver lists may mix IPv4 and IPv6 entries.
 - Server requires at least one --domain (repeatable); --target-address defaults to 127.0.0.1:5201.
+- Both client and server accept `--payload-limit N` to override the default 1000-byte
+  upstream/downstream payload limit. The value must be at least 1.
